@@ -1,4 +1,7 @@
+from .tools import fetch_weather
+from .state import AgentState
 import json
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
@@ -6,8 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import AzureChatOpenAI
 from pydantic import BaseModel
 
-from .state import AgentState
-from .tools import fetch_weather
+logger = logging.getLogger(__name__)
 
 
 def _create_llm() -> AzureChatOpenAI:
@@ -65,20 +67,22 @@ class PlannerAgent:
             + "\n".join(f"{t}" for t in tasks)
         )
 
-        print(f"PlannerAgent: taks created: {tasks}")
-        print(f"PlannerAgent: Handoff message: {handoff_message}")
+        logger.info("[PlannerAgent]  Tasks generated : %s", tasks)
+        logger.info("[PlannerAgent]  Handoff message : %r", handoff_message)
         return {"tasks": tasks, "agent_handoff_message": handoff_message}
 
     async def summarize(self, state: AgentState) -> Dict[str, Any]:
-        agent_b_response = state.agent_b_response or "No response from Executor Agent"
-        print(
-            f"PlannerAgent: Reading Executor Agent response: {agent_b_response}")
+        executor_agent_response = state.executor_agent_response or "No response from Executor Agent"
+
+        logger.info("[PlannerAgent]  Reading Executor Agent response: %s",
+                    executor_agent_response)
 
         weather_json = json.dumps(state.weather_data, indent=2)
+
         user_context = (
             f"Original user request: \n{state.user_input}\n\n"
-            f"Executor Agent execution report: \n{agent_b_response}\n\n"
-            f"Weather data from Executor Agent: \n{weather_json}"
+            f"Executor agent execution report: \n{executor_agent_response}\n\n"
+            f"Weather data from executor agent: \n{weather_json}"
         )
 
         system_prompt = (
@@ -94,7 +98,7 @@ class PlannerAgent:
         ]
 
         response = await self.llm.ainvoke(messages)
-        print("PlannerAgent: Final summary generated")
+        logger.info("[PlannerAgent]  Final summary generated.")
         return {"final_summary": response.content}
 
 
@@ -116,12 +120,12 @@ class ExecutorAgent:
         self.llm: AzureChatOpenAI = _create_llm()
 
     async def execute(self, state: AgentState) -> Dict[str, Any]:
-        print(
-            f"ExecutorAgent: Received handoff:\n"
-            f"{state.agnet_handoff_message or 'No hand off message'}"
+        handoff_lines = "\n".join(
+            f"  {line}" for line in (state.agent_handoff_message or "No hand off message").splitlines()
         )
+        logger.info("[ExecutorAgent] Received handoff:\n%s", handoff_lines)
 
-        weather_data = Dict[str, Any] = {}
+        weather_data: Dict[str, Any] = {}
 
         structured_llm = self.llm.with_structured_output(ToolDecision)
 
@@ -135,20 +139,22 @@ class ExecutorAgent:
             if decision.tool == "fetch_weather":
                 city = (decision.city or "").strip()
                 if not city:
-                    print(f"ExecutorAgent: fetch_weather selected. No city provided.")
-                    print(f"ExecutorAgent: Skipping task {task}")
+                    logger.warning(
+                        "[ExecutorAgent] fetch_weather selected but no city provided. Skipping task: %s", task)
                     continue
-                print(f"ExecutorAgent: LLM chose fetch_weather - city: {city}")
+                logger.info(
+                    "[ExecutorAgent] LLM chose fetch_weather → city: '%s'", city)
                 result = await fetch_weather(city)
                 weather_data[city] = result
                 status = "error" if "error" in result else "success"
-                print(f"ExecutorAgent fetch weather: '{city}': {status}")
+                logger.info(
+                    "[ExecutorAgent] Weather fetch '%s': %s", city, status)
             elif decision.tool == "delegate_to_planner_agent":
-                print(
-                    f"ExecutorAgent: Task {task} is Planner Agent's responsibility hence delgating to it")
+                logger.info(
+                    "[ExecutorAgent] Task '%s' is Planner Agent's responsibility — delegating back.", task)
             else:
-                print(
-                    f"ExecutorAgent LLM chose unknown tool {decision.tool}. Skipping.")
+                logger.warning(
+                    "[ExecutorAgent] LLM chose unknown tool '%s'. Skipping.", decision.tool)
 
         weather_results: List[str] = []
 
@@ -157,19 +163,29 @@ class ExecutorAgent:
                 weather_results.append(f"{city}: FAILED - {data['error']}")
             else:
                 weather_results.append(
-                    f"{city}: OK- {data['temperature_celcius']} Degree centigrade, {data['description']}"
+                    f"{city}: OK - {data['temperature_celcius']} degrees centigrade, {data['description']}"
                 )
+
         summarize_delegation = any(t == "summarize" for t in state.tasks)
+
         if summarize_delegation:
             weather_results.append(
-                "summarize: delegated to Planner Agent for compling summary"
+                "summarize: delegated to planner agent for compling summary"
             )
+
         executor_agent_response = (
             "Executor to Planner Agent Results.\n"
             f"Executed {len(state.tasks)} tasks: \n"
             + ("\n".join(weather_results)
                if weather_results else " (no tasks executed)")
         )
-        print(
-            f"ExecutorAgnet: Response to Agent A: \n{executor_agent_response}")
+
+        response_lines = "\n".join(
+            f"  {line}" for line in executor_agent_response.splitlines()
+        )
+        logger.info(
+            "[ExecutorAgent] Response to Planner Agent:\n%s", response_lines)
         return {"weather_data": weather_data, "executor_agent_response": executor_agent_response}
+
+
+
