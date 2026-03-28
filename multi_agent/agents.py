@@ -32,11 +32,13 @@ class ToolDecision(BaseModel):
 
 
 class PlannerAgent:
+    """Orchestrates the workflow: decomposes the user request into tasks and compiles the final summary."""
 
     def __init__(self) -> None:
         self.llm: AzureChatOpenAI = _create_llm()
 
     async def plan(self, state: AgentState) -> Dict[str, Any]:
+        """Breaks the user request into an ordered task list and prepares a handoff message for the Executor Agent."""
 
         system_prompt = (
             "You are a task-planning agent. Analyse the user request and produce "
@@ -72,6 +74,7 @@ class PlannerAgent:
         return {"tasks": tasks, "agent_handoff_message": handoff_message}
 
     async def summarize(self, state: AgentState) -> Dict[str, Any]:
+        """Reads the Executor Agent's results and produces a friendly natural-language summary."""
         executor_agent_response = state.executor_agent_response or "No response from Executor Agent"
 
         logger.info("[PlannerAgent]  Reading Executor Agent response: %s",
@@ -103,6 +106,7 @@ class PlannerAgent:
 
 
 class ExecutorAgent:
+    """Executes each task in the plan by dispatching to the appropriate tool and reporting results back to the Planner Agent."""
 
     _prompt = (
         "You are a helpful agent. Given a task string, determine which "
@@ -120,6 +124,7 @@ class ExecutorAgent:
         self.llm: AzureChatOpenAI = _create_llm()
 
     async def execute(self, state: AgentState) -> Dict[str, Any]:
+        """Iterates over the task list, invokes the relevant tool per task, and compiles an execution report."""
         handoff_lines = "\n".join(
             f"  {line}" for line in (state.agent_handoff_message or "No hand off message").splitlines()
         )
@@ -186,6 +191,3 @@ class ExecutorAgent:
         logger.info(
             "[ExecutorAgent] Response to Planner Agent:\n%s", response_lines)
         return {"weather_data": weather_data, "executor_agent_response": executor_agent_response}
-
-
-
