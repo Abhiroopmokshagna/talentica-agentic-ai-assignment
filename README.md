@@ -140,3 +140,19 @@ PlannerAgent.summarize() ─── reads weather_data, produces final_summary
     ▼
 Printed to terminal
 ```
+---
+### Sample Inputs & Outputs
+```
+Input: What's the current weather in delhi and provide a short summary of it.
+
+Output: The current weather in Delhi, India, is quite pleasant. The temperature is 28.05°C, but it feels slightly cooler at 27.85°C. The sky is partly covered with broken clouds, and the humidity is at 42%, making it relatively comfortable. There's a gentle breeze with a wind speed of 2.06 meters per second. Enjoy your day in Delhi!
+```
+```
+Input: What's the current weather in delhi and new york and provide a short summary.
+
+Output: Here's the current weather summary for the cities you asked about:
+
+**Delhi, India**: The temperature is 28.05°C with a "feels like" temperature of 27.85°C. The weather is characterized by broken clouds, with a humidity level of 42% and a gentle wind blowing at 2.06 meters per second.
+
+**New York, USA**: It's cooler with a temperature of 4.16°C, but it feels like -0.28°C due to the wind. The sky has a few clouds, and the humidity is at 47%. The wind is stronger here, blowing at 6.26 meters per second.
+```
